@@ -6,7 +6,11 @@
  * its source text, override text (if a file exists), and effective switch
  * state (settings record's agent.prompts map AND file presence).
  *
- *   GET → 200 {prober: SegmentInfo[], teacher: SegmentInfo[], practice: SegmentInfo[]}
+ *   GET → 200 {prober: SegmentInfo[], teacher: SegmentInfo[], practice: SegmentInfo[], paper: SegmentInfo[]}
+ *
+ * `paper` lists the paper-session fragments (paper/shared, paper/prober,
+ * paper/teacher): they compose into the prober and teacher of PAPER
+ * sessions only, so they sit in their own list, not in those agents'.
  *   SegmentInfo = {path, sourceText, overrideText, enabled, shared}
  *
  * Shared usage is discoverable by path membership in these lists. The
@@ -16,7 +20,7 @@
  * PUT/DELETE /api/settings/prompts/[...segment].
  */
 
-import { effectivePromptSegments, readSettingsRecord } from "@/src/server";
+import { effectivePaperSegments, effectivePromptSegments, readSettingsRecord } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -26,5 +30,6 @@ export async function GET() {
 		prober: effectivePromptSegments("prober", switches),
 		teacher: effectivePromptSegments("teacher", switches),
 		practice: effectivePromptSegments("practice", switches),
+		paper: effectivePaperSegments(switches),
 	});
 }

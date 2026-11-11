@@ -420,6 +420,16 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			});
 			return;
 		}
+		case "paper-context": {
+			// A paper session's papers: the same user-side card slot as the
+			// graph context, above the learner's first message.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-paper-context", id: `pc_${marker.id}`, data: marker.details }],
+			});
+			return;
+		}
 		case "probe-handoff": {
 			out.push({
 				id: marker.id,

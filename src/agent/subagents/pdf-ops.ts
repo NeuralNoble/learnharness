@@ -245,6 +245,27 @@ export async function convertPdf(data: Uint8Array, maxPages: number, options?: {
 	return defaultPdfConverter(data, maxPages, options);
 }
 
+/** The document-info Title, or null when absent or unreadable. Many PDFs
+ *  carry none, or a word-processor file name, so callers prefer the first
+ *  page's heading and use this as the fallback. */
+export async function pdfMetadataTitle(data: Uint8Array): Promise<string | null> {
+	let opened: Awaited<ReturnType<typeof openBytes>>;
+	try {
+		opened = await openBytes(data);
+	} catch {
+		return null;
+	}
+	try {
+		const meta = await opened.doc.getMetadata();
+		const title = (meta.info as { Title?: unknown } | undefined)?.Title;
+		return typeof title === "string" && title.trim() ? title.trim() : null;
+	} catch {
+		return null;
+	} finally {
+		await opened.task.destroy();
+	}
+}
+
 /** A page's Markdown, or "" for a page with no text (the agent renders those). */
 function pageMarkdown(page: PdfPage): string {
 	return page.kind === "text" ? page.markdown : "";

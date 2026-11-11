@@ -59,7 +59,11 @@ import { hasProbeDone, hasUnresolvedQuestion, pendingPluginQuestionOf, pluginQue
 import { samePluginQuestionOccurrence } from "../core/plugin-questions.ts";
 import { composeInstructions } from "../agent/teacher-agent.ts";
 import { ensureCompacted, kickCompaction, effectiveThresholdTokens, projectedContextTokens, compactionInFlight } from "./compaction.ts";
-import { COMPACTION_RESERVE_TOKENS } from "../core/compaction.ts";
+import { COMPACTION_RESERVE_TOKENS, DEFAULT_COMPACTION_THRESHOLD_TOKENS } from "../core/compaction.ts";
+import { paperContextBlock, type SessionPaper } from "../agent/paper-context.ts";
+import { paperTools } from "../agent/tools/paper.ts";
+import { loadSessionPapers } from "./papers.ts";
+import { estimatePaperTokens, type ChatRecord } from "../core/contracts.ts";
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
@@ -180,6 +184,30 @@ setJobRespawn((jobId) => void jobRunner.runJob(jobId));
 // tools read it fresh per call (allowed folders + the app's private paths).
 setFileAccessPolicy(fileAccessPolicy);
 
+/** The compaction projection's system-prompt estimate (4 characters per
+ *  token): the composed instructions, plus every page of a paper session's
+ *  papers, which lead its system prompt on every turn. */
+function systemPromptTokensFor(record: ChatRecord): number {
+	const instructions = composeInstructions(record.kind === "practice" ? "practice" : "teacher", undefined, { paper: record.kind === "paper" }).length;
+	return Math.ceil(instructions / 4) + paperTokensFor(record);
+}
+
+/** A paper session's papers in tokens (0 for every other kind). */
+function paperTokensFor(record: ChatRecord): number {
+	if (record.kind !== "paper") return 0;
+	return estimatePaperTokens((record.papers ?? []).reduce((sum, id) => sum + (stores.paperStore.getPaper(id)?.textChars ?? 0), 0));
+}
+
+/** The compaction trigger for this record. The setting budgets the
+ *  CONVERSATION: a paper session's papers are fixed material compaction
+ *  can never shrink, so they ride on top of it (else papers larger than the
+ *  setting would re-trigger a summary on every turn). The model's window
+ *  minus the reserve still caps the total, as for every session. */
+function thresholdFor(record: ChatRecord, settingTokens: number | undefined, contextWindowTokens: number | undefined): number {
+	const papers = paperTokensFor(record);
+	return effectiveThresholdTokens(papers > 0 ? (settingTokens ?? DEFAULT_COMPACTION_THRESHOLD_TOKENS) + papers : settingTokens, contextWindowTokens);
+}
+
 /** The route-facing entry: parse {chatId, input} and run one turn. */
 export async function handleChatRequest(
 	req: Request,
@@ -255,6 +283,15 @@ export async function handleChatInput(
 			const host = await getPluginHost();
 			questionResolver = (pluginId, typeId, version) => host.resolveQuestionType(pluginId, typeId, version);
 		} catch { return Response.json({ error: "Question unavailable" }, { status: 400 }); }
+	}
+	// PAPER SESSIONS: the papers are the session's material — a turn without
+	// them would teach from nothing. Refused before any turn/write effects.
+	let sessionPapers: SessionPaper[] | null = null;
+	if (record.kind === "paper") {
+		sessionPapers = record.papers?.length ? loadSessionPapers(record.papers) : null;
+		if (!sessionPapers) {
+			return Response.json({ error: "This session's papers are missing from the paper library. Start a new paper session." }, { status: 409 });
+		}
 	}
 
 	// Refuse an ineligible Retry before catalog refresh, compaction, or any
@@ -363,8 +400,10 @@ export async function handleChatInput(
 	}
 	const modelIdForCompaction = `${conversationEngine.model.provider}:${conversationEngine.model.id}`;
 	const contextWindow = catalogContextLimits().get(modelIdForCompaction);
-	const thresholdTokens = effectiveThresholdTokens(effective.compaction?.thresholdTokens, contextWindow);
-	const systemPromptTokens = Math.ceil(composeInstructions(record.kind === "practice" ? "practice" : "teacher").length / 4);
+	// Paper sessions: the papers lead the system prompt, so they count toward
+	// its size, and the threshold budgets the conversation on top of them.
+	const thresholdTokens = thresholdFor(record, effective.compaction?.thresholdTokens, contextWindow);
+	const systemPromptTokens = systemPromptTokensFor(record);
 	const estimateModel = effective.compaction.includeReasoning ? conversationEngine.model : undefined;
 	const fitsSideContext = (messages: readonly LhMessage[]) => {
 		const live = messages.filter((message) => (message as { role: string }).role !== "system");
@@ -725,6 +764,17 @@ export async function handleChatInput(
 		// point as the tool delta — the agent layer composes the system
 		// prompt fresh per turn, swapping in any enabled override segments.
 		promptSwitches: effective.agent.prompts,
+		// PAPER SESSIONS: every page of the papers leads the system prompt,
+		// and the paper tools join the registry (the teacher can also show
+		// pages; both agents can look at them).
+		...(sessionPapers
+			? {
+					paper: {
+						context: paperContextBlock(sessionPapers),
+						tools: paperTools({ papers: sessionPapers, chatId, chatStore: stores.chatStore, model: engine.model }, teaching ? "teacher" : "prober"),
+					},
+				}
+			: {}),
 	};
 	// PRACTICE BRANCH (owner design, 2026-10-04): a kind:"practice"
 	// session builds the practitioner from turn 1 — no prober→teacher
@@ -939,11 +989,8 @@ export async function handleChatInput(
 							modelId: kickModelId,
 							kind: freshRecord.kind === "practice" ? "practice" : hasProbeDone(freshRecord.messages) ? "teach" : "probe",
 							includeReasoning: fresh.compaction.includeReasoning,
-							thresholdTokens: effectiveThresholdTokens(
-								fresh.compaction?.thresholdTokens,
-								catalogContextLimits().get(kickModelId),
-							),
-							systemPromptTokens: Math.ceil(composeInstructions(freshRecord.kind === "practice" ? "practice" : "teacher").length / 4),
+							thresholdTokens: thresholdFor(freshRecord, fresh.compaction?.thresholdTokens, catalogContextLimits().get(kickModelId)),
+							systemPromptTokens: systemPromptTokensFor(freshRecord),
 						};
 					}, chatId);
 			},

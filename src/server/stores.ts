@@ -12,6 +12,7 @@ import { sourceOrganizationStore } from "../store/source-organization.ts";
 import { jobStore } from "../store/jobs.ts";
 import { settingsStore } from "../store/settings.ts";
 import { themeStore } from "../store/themes.ts";
+import { paperStore } from "../store/papers.ts";
 import { resolveSettings, type EffectiveSettings } from "../core/settings-resolution.ts";
 import { syncCustomProvider } from "./custom-provider.ts";
 import { configureWorkerRequestAdmission } from "../agent/worker-request-admission.ts";
@@ -23,6 +24,7 @@ export const stores = {
 	jobStore,
 	settingsStore,
 	themeStore,
+	paperStore,
 };
 
 export type Stores = typeof stores;

@@ -13,6 +13,7 @@ export * from "./source-deletion.ts";
 export { NotesImportError } from "../agent/subagents/extraction.ts";
 export { convertPdf } from "../agent/subagents/pdf-ops.ts";
 export { joinPages } from "../agent/subagents/pdf-markdown.ts";
+export { addPaper, PaperUploadError, paperContextProblem, resolveSessionPapers } from "./papers.ts";
 export * from "./commit-positions.ts";
 export * from "./jobs.ts";
 export { prepareSubmissionImages, prepareSubmissionImageChannels } from "./submission-images.ts";
@@ -34,7 +35,7 @@ export { isValidSegmentPath } from "../core/prompt-segments.ts";
 // The canonical segment discovery/resolution lives in the agent layer
 // (composition is an agent concern); the barrel re-exports it for the
 // routes — server→agent is the lawful direction (chat-handler precedent).
-export { effectivePromptSegments, allSegmentPaths, readPromptOverride } from "../agent/prompt-segments.ts";
+export { effectivePaperSegments, effectivePromptSegments, allSegmentPaths, readPromptOverride } from "../agent/prompt-segments.ts";
 
 // The auth/keys composition (auth-keys wave, 2026-09-19): the curated
 // key catalog + the env-reflecting store behind GET/PUT/DELETE /api/keys.

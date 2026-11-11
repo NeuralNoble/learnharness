@@ -66,6 +66,7 @@ function withPayload(test: (fixture: {
 		write(path.join(STANDALONE, "src", "agent", "prompts", "teacher", "20-teaching.md"));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "side-chat", "00-base.md"));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "side-chat", "90-style.md"));
+		write(path.join(STANDALONE, "src", "agent", "prompts", "paper", "teacher", "30-teach.md"));
 		test({ root, write, run: () => spawnSync(process.execPath, [path.join(root, "scripts", "build-server.mjs")], {
 			cwd: root, encoding: "utf8", timeout: 10_000,
 		}) });

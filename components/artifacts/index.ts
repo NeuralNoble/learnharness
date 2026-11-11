@@ -31,6 +31,9 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	visual: VisualCard,
 	// A learner image shown as-is (issue #363): the picture itself, inline.
 	show_image: ImageCard,
+	// paper_show (paper sessions) records the same details shape: a page of
+	// a session paper, rendered and stored as a session snapshot.
+	paper_show: ImageCard,
 	// The probe conclusion: the assessment belongs to the learner as much as
 	// to the transcript (docs/archive/probe-teach-split.md §2). Plain v1 card.
 	probe_done: ProbeDoneCard,

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode, ThemeMode } from "@/src/core";
-import { DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { DumbbellIcon, FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -339,6 +339,9 @@ export function SessionRow({
 			{(chat.kind ?? "teach") === "practice" && (
 				<DumbbellIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-label="Practice session" />
 			)}
+			{chat.kind === "paper" && (
+				<FileTextIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-label="Paper session" />
+			)}
 		</button>
 	);
 }
@@ -435,7 +438,9 @@ function SessionsSidebar() {
 		const q = query.trim();
 		let list = chats;
 		if (list && kindFilter !== "all") {
-			list = list.filter((c) => (c.kind ?? "teach") === kindFilter);
+			// A paper session is a teaching session (the same prober → teacher
+			// flow), so the Teaching filter keeps it.
+			list = list.filter((c) => ((c.kind ?? "teach") === "paper" ? "teach" : c.kind ?? "teach") === kindFilter);
 		}
 		if (!list) return list;
 		if (!q) return list;
@@ -721,6 +726,17 @@ function SessionsSidebar() {
 						<DumbbellIcon className="size-3 shrink-0" />
 						<span className="min-w-0 truncate">Practice</span>
 						<span className="sr-only">create a new practice session</span>
+					</button>
+					<button
+						type="button"
+						data-testid="new-session-paper"
+						title="Papers"
+						onClick={() => router.push("/chat/new?mode=paper")}
+						className="flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+					>
+						<FileTextIcon className="size-3 shrink-0" />
+						<span className="min-w-0 truncate">Papers</span>
+						<span className="sr-only">create a new paper session</span>
 					</button>
 				</PluginSidebarActions>
 

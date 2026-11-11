@@ -29,6 +29,9 @@ export const PATHS = {
 	/** Chat sessions (AI SDK UIMessage transcripts, one JSON file per chat). */
 	chats: path.join(/* turbopackIgnore: true */ DATA_ROOT, "chats"),
 	graph: path.join(/* turbopackIgnore: true */ DATA_ROOT, "graph"),
+	/** Paper library (paper sessions): one folder per PDF, named by its
+	 * SHA-256 — the copied PDF, its page text and its record. */
+	papers: path.join(/* turbopackIgnore: true */ DATA_ROOT, "papers"),
 	/** Debug artifacts (env-gated): data/debug/provider-events/<chatId>.jsonl
 	 * raw provider stream recordings (src/agent/provider-events.ts). */
 	debug: path.join(/* turbopackIgnore: true */ DATA_ROOT, "debug"),

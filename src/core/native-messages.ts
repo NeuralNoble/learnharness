@@ -74,6 +74,7 @@ export interface LhMarkerMessage {
 	role: "custom";
 	customType:
 		| "graph-context"
+		| "paper-context"
 		| "probe-handoff"
 		| "subagent-steer"
 		| "subagent-abort"
@@ -346,6 +347,37 @@ export function newGraphContextMessage(picks: readonly GraphContextPick[], chain
 		content: lines.join("\n"),
 		display: true,
 		details: { propositions: picks, chains },
+		timestamp: Date.now(),
+	};
+}
+
+/** One paper of a paper session, as the session's opening card lists it. */
+export interface PaperContextEntry {
+	/** 1-based position — the paper tools' `paper` argument. */
+	index: number;
+	title: string;
+	fileName: string;
+	pageCount: number;
+	textlessPages: number[];
+}
+
+/** A paper session's opening marker: a SEPARATE custom message before the
+ *  learner's first message, naming the session's papers (graph-context's
+ *  pattern). The papers' full text rides the agents' system prompt, so the
+ *  model-facing content stays a short index; `details` feeds the
+ *  transcript's PaperContextCard. */
+export function newPaperContextMessage(papers: readonly PaperContextEntry[]): LhMarkerMessage {
+	const lines = [
+		"[Session context] — the learner started this paper session with these papers (their full text is in your instructions):",
+		...papers.map((p) => `${p.index}. ${p.title} (${p.pageCount} ${p.pageCount === 1 ? "page" : "pages"})`),
+	];
+	return {
+		id: newMessageId(),
+		role: "custom",
+		customType: "paper-context",
+		content: lines.join("\n"),
+		display: true,
+		details: { papers },
 		timestamp: Date.now(),
 	};
 }
@@ -988,7 +1020,7 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "custom") {
 		if (["probe-handoff", "subagent-steer", "subagent-abort"].includes(message.customType)) return "automatic";
 		if (["practice-thinking", "plugin-problem-submission", "practice-next"].includes(message.customType)) return "learner";
-		return ["graph-context", "plan-block", "problem-dismissed", "compaction", "side-question", "side-question-told"].includes(message.customType) ? "neutral" : "unrecognizable";
+		return ["graph-context", "paper-context", "plan-block", "problem-dismissed", "compaction", "side-question", "side-question-told"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {
 		const pluginAnswer = readPluginQuestionAnswer(message.details);

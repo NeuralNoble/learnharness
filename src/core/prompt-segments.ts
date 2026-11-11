@@ -44,6 +44,10 @@ export interface PromptSegmentInfo {
  *  CURRENT source segment list. */
 export function isValidSegmentPath(segmentPath: string): boolean {
 	if (segmentPath === "system-prompt.md") return true;
+	// Paper-session fragments (paper/shared, paper/prober, paper/teacher):
+	// composed only into paper sessions' prober and teacher prompts.
+	const paper = /^paper\/(shared|prober|teacher)\/([\w.-]+\.md)$/.exec(segmentPath);
+	if (paper) return FRAGMENT_RE.test(paper[2]!);
 	const m = /^(prober|teacher|practice|shared)\/([\w.-]+\.md)$/.exec(segmentPath);
 	if (!m || m[2] === undefined) return false;
 	return FRAGMENT_RE.test(m[2]);

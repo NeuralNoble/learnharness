@@ -30,6 +30,8 @@ import type {
 	SideChatThread,
 	TurnUsage,
 	NotesSource,
+	PaperPage,
+	PaperRecord,
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 import type { Theme, ThemeFile } from "./themes.ts";
@@ -54,9 +56,10 @@ export interface PluginTaskRecordStore {
 
 export interface ChatStore {
 	/** Create a session record (persisted immediately). */
-	/** Create a session record; kind "practice" marks a practice session
-	 *  (absent = teach, the default). */
-	createChat(title: string, kind?: "practice"): ChatRecord;
+	/** Create a session record; kind "practice" marks a practice session,
+	 *  kind "paper" a paper session reading `papers` (library ids, in
+	 *  order) — absent kind = teach, the default. */
+	createChat(title: string, kind?: "practice" | "paper", papers?: readonly string[]): ChatRecord;
 	/** The full record, or null if unknown id / corrupt file. */
 	getChat(id: string): ChatRecord | null;
 	/** All sessions, newest activity first (the sidebar's list view). */
@@ -250,6 +253,23 @@ export interface ThemeStore {
  * The segment LIST is always derived from source at runtime — see the
  * adapter (src/store/prompt-overrides.ts) for the loader rules.
  */
+// ─── PaperStore — the paper library (data/papers) ────────────────────────────
+
+/** The paper library: one stored copy of each PDF a learner added to a paper
+ *  session, keyed by the SHA-256 of its bytes, with its extracted page text.
+ *  Write-once per id: the same bytes always convert to the same pages. */
+export interface PaperStore {
+	/** The paper's record, or null for an unknown id / unreadable record. */
+	getPaper(id: string): PaperRecord | null;
+	/** Every page's extracted text, in page order, or null when unknown. */
+	readPages(id: string): PaperPage[] | null;
+	/** Absolute path of the stored PDF copy (exists once getPaper does). */
+	pdfPath(id: string): string;
+	/** Store a converted paper: the PDF copy, its pages, then its record
+	 *  (the record lands last, so a readable record means a complete paper). */
+	savePaper(record: PaperRecord, pdf: Uint8Array, pages: readonly PaperPage[]): void;
+}
+
 export interface PromptOverrideStore {
 	/** Every override path currently on disk ("system-prompt.md",
 	 *  "teacher/20-teaching.md", ...), POSIX-relative, sorted. */

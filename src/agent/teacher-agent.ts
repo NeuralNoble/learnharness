@@ -84,8 +84,8 @@ export const CONVERSATION_TOOL_NAMES = Object.freeze([
  *  tests/prompt-overrides.test.ts). Overrides are a static-file read
  *  through config paths, not request state — the store import carries no
  *  chat/job machinery. */
-export function composeInstructions(kind: AgentKind, switches?: Record<string, boolean>): string {
-	const segments = effectivePromptSegments(kind, switches ?? {});
+export function composeInstructions(kind: AgentKind, switches?: Record<string, boolean>, opts: { paper?: boolean } = {}): string {
+	const segments = effectivePromptSegments(kind, switches ?? {}, opts);
 	return segments
 		.map((s) => (s.enabled ? s.overrideText! : s.sourceText))
 		.map((t) => t.trim())
@@ -148,6 +148,12 @@ export interface AgentBuildOptions {
 	 *  fresh per turn, honoring enabled overrides (switch on + file
 	 *  exists); absent → the cached pure-source composition. */
 	promptSwitches?: Record<string, boolean>;
+	/** PAPER SESSIONS: the session's papers. `context` (paperContextBlock —
+	 *  every page) leads the system prompt, the paper/ prompt fragments
+	 *  compose after the agent's own, and `tools` (the paper tools, built
+	 *  for this agent by the composition root) join the registry. Ignored
+	 *  by the practice agent. */
+	paper?: { context: string; tools: AgentTool<any>[] };
 	/** Native conversation identity: the existing persisted chat id, reused
 	 * across reconstructed prober, teacher, and practice Agents.
 	 * Debug: when set AND LH_PROVIDER_EVENTS=1, raw provider stream events
@@ -211,9 +217,15 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const stopper = makeQuestionStopper(kind);
 	const narrationGuard = narrationGuardApplies(kind, engine.model, opts.tools !== undefined);
 	const narrationHooks = narrationGuard ? makeNarrationGuard() : undefined;
-	const composedPrompt = opts.promptSwitches
-		? composeInstructions(kind, opts.promptSwitches)
-		: composedInstructions[kind]!;
+	const paper = kind === "practice" ? undefined : opts.paper;
+	const instructions = paper
+		? composeInstructions(kind, opts.promptSwitches, { paper: true })
+		: opts.promptSwitches
+			? composeInstructions(kind, opts.promptSwitches)
+			: composedInstructions[kind]!;
+	// Paper sessions: the papers come FIRST (long documents above the
+	// instructions), identical on every turn so they stay prompt-cached.
+	const composedPrompt = paper ? `${paper.context}\n\n---\n\n${instructions}` : instructions;
 	const builtinPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
 	// Bind native read and preserve the kind/model-aware Claude output gate
 	// before resolving additive plugins. Explicit registries remain caller-owned.
@@ -221,6 +233,8 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 		...tools.map((tool) => tool.name === "read" && tool.execute === readTool.execute
 			? { ...tool, execute: createReadTool(engine.model).execute as AgentTool<any>["execute"] }
 			: tool),
+		// Paper sessions' tools are builtins too: plugins can't claim their names.
+		...(paper?.tools ?? []),
 		...(sendToUserApplies(kind, engine.model, opts.tools !== undefined)
 			? [withArgumentHeal(sendToUserTool)]
 			: []),

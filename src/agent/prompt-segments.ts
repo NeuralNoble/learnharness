@@ -59,12 +59,30 @@ export function readPromptOverride(segmentPath: string): string | null {
 	}
 }
 
+/** The numeric-prefix fragments of one prompts/ subdirectory, sorted by
+ *  filename, keyed by their path under prompts/. */
+function fragmentSegments(dirRel: string): Array<{ path: string; shared: boolean; file: string }> {
+	const dir = path.join(PROMPTS_DIR, ...dirRel.split("/"));
+	if (!fs.existsSync(dir)) return [];
+	return fs
+		.readdirSync(dir)
+		.filter((f) => FRAGMENT_RE.test(f))
+		.sort()
+		.map((f) => ({ path: `${dirRel}/${f}`, shared: false, file: path.join(dir, f) }));
+}
+
+/** The paper-session fragments alone, in composition order (the Settings
+ *  view's Papers list): paper/shared, then the prober's, then the teacher's. */
+export function listPaperSegments(): Array<{ path: string; shared: boolean; file: string }> {
+	return [...fragmentSegments("paper/shared"), ...fragmentSegments("paper/prober"), ...fragmentSegments("paper/teacher")];
+}
+
 /** List the SOURCE segments for one agent, in composition order — the
  *  shared base, then the agent's own fragments sorted by filename, then
  *  the shared/ fragments (the 2026-09-27 reorder: the agent's job and
  *  method lead; the shared tool/file/format mechanics are an appendix).
  *  The exact order composeInstructions composes them in. */
-export function listSourceSegments(agent: PromptAgent): Array<{ path: string; shared: boolean; file: string }> {
+export function listSourceSegments(agent: PromptAgent, opts: { paper?: boolean } = {}): Array<{ path: string; shared: boolean; file: string }> {
 	// PRACTICE (owner, 2026-10-04): its own directory plus a CURATED
 	// shared appendix — the teaching base and the question/confidence/
 	// file mechanics stay out (the doctrine contradicts them; 00-base.md
@@ -74,13 +92,10 @@ export function listSourceSegments(agent: PromptAgent): Array<{ path: string; sh
 	const segments: Array<{ path: string; shared: boolean; file: string }> = agent === "practice" ? [] : [
 		{ path: "system-prompt.md", shared: true, file: PATHS.teacherPrompt },
 	];
-	const dir = path.join(PROMPTS_DIR, agent);
-	if (fs.existsSync(dir)) {
-		const fragments = fs.readdirSync(dir).filter((f) => FRAGMENT_RE.test(f)).sort();
-		for (const f of fragments) {
-			segments.push({ path: `${agent}/${f}`, shared: false, file: path.join(dir, f) });
-		}
-	}
+	segments.push(...fragmentSegments(agent));
+	// PAPER SESSIONS: the paper fragments follow the agent's own doctrine
+	// (they adapt it to reading papers) and precede the shared mechanics.
+	if (opts.paper && agent !== "practice") segments.push(...fragmentSegments("paper/shared"), ...fragmentSegments(`paper/${agent}`));
 	const sharedDir = path.join(PROMPTS_DIR, "shared");
 	if (fs.existsSync(sharedDir)) {
 		// The practice allowlist (owner, 2026-10-04 late): formatting only.
@@ -105,8 +120,21 @@ export function listSourceSegments(agent: PromptAgent): Array<{ path: string; sh
 export function effectivePromptSegments(
 	agent: PromptAgent,
 	switches: Record<string, boolean>,
+	opts: { paper?: boolean } = {},
 ): PromptSegmentInfo[] {
-	return listSourceSegments(agent).map((segment) => {
+	return resolveSegments(listSourceSegments(agent, opts), switches);
+}
+
+/** The paper-session fragments' effective view (Settings → Papers). */
+export function effectivePaperSegments(switches: Record<string, boolean>): PromptSegmentInfo[] {
+	return resolveSegments(listPaperSegments(), switches);
+}
+
+function resolveSegments(
+	segments: Array<{ path: string; shared: boolean; file: string }>,
+	switches: Record<string, boolean>,
+): PromptSegmentInfo[] {
+	return segments.map((segment) => {
 		let sourceText: string;
 		try {
 			sourceText = fs.readFileSync(segment.file, "utf-8");
@@ -130,5 +158,6 @@ export function allSegmentPaths(): string[] {
 	for (const agent of ["prober", "teacher", "practice"] as const) {
 		for (const segment of listSourceSegments(agent)) paths.add(segment.path);
 	}
+	for (const segment of listPaperSegments()) paths.add(segment.path);
 	return [...paths].sort();
 }

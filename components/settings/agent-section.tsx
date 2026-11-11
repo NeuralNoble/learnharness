@@ -105,7 +105,8 @@ interface SegmentInfo {
 	shared: boolean;
 }
 
-type PromptView = Record<"teacher" | "prober" | "practice", SegmentInfo[]>;
+/** `paper` (paper-session fragments) is optional: an older server omits it. */
+type PromptView = Record<"teacher" | "prober" | "practice", SegmentInfo[]> & { paper?: SegmentInfo[] };
 type PromptRow = SegmentInfo & { usageHint?: string };
 
 /** Compose: one tool toggled, the rest of the section carried verbatim.
@@ -267,6 +268,9 @@ export function sectionedSegments(view: PromptView): PromptSection[] {
 	}
 	return [
 		...agents.map(({ id, label }) => ({ id, label, segments: view[id].filter((s) => !s.shared) })),
+		// Paper sessions' own fragments: composed into the prober and teacher
+		// of paper sessions only, on top of everything listed above.
+		...(view.paper?.length ? [{ id: "paper" as const, label: "Papers", segments: view.paper }] : []),
 		{
 			id: "shared",
 			label: "Shared",

@@ -129,7 +129,8 @@ export function MinimalHome({
 	const notesImport = useNotesImport({ onFinish: readState });
 	const { importing, onImportFiles } = notesImport;
 
-	const teachSessions = chats.filter((c) => c.kind === "teach").length;
+	// Paper sessions are teaching sessions over papers: they count here.
+	const teachSessions = chats.filter((c) => c.kind === "teach" || c.kind === "paper").length;
 	const practiceSessions = chats.filter((c) => c.kind === "practice").length;
 
 	return (

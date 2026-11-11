@@ -98,10 +98,13 @@ Supporting declaration used by a public type. This is not an additional runtime 
 
 Session kind: teach is the default when a saved record omits kind.
 Practice uses the adaptive-practice agent without teaching extraction or
-graph writes. Reading an absent kind does not require a record migration.
+graph writes. Paper runs the teach flow over the session's papers
+(ChatRecord.papers): every page in the agents' system prompt, plus the
+paper prompt fragments and tools. Reading an absent kind does not require a
+record migration.
 
 ```ts
-export type ChatKind = "teach" | "practice";
+export type ChatKind = "teach" | "practice" | "paper";
 ```
 
 ## ChatListItem
@@ -158,6 +161,7 @@ export interface ChatRecord {
     messages: LhMessage[];
     imageSnapshots?: Record<string, ImageSnapshot>;
     kind?: ChatKind;
+    papers?: string[];
     tree?: PlanTree;
     turns?: TurnUsage[];
     extractions?: ExtractionRunUsage[];
@@ -178,6 +182,7 @@ export interface ChatRecord {
 - [messages](#chatrecord-messages)
 - [imageSnapshots](#chatrecord-imagesnapshots)
 - [kind](#chatrecord-kind)
+- [papers](#chatrecord-papers)
 - [tree](#chatrecord-tree)
 - [turns](#chatrecord-turns)
 - [extractions](#chatrecord-extractions)
@@ -229,6 +234,15 @@ The session's kind; an absent field reads as teach.
 
 ```ts
 kind?: ChatKind;
+```
+
+### ChatRecord papers
+
+Paper sessions only: the paper library ids (PaperRecord.id) the
+session reads, in the order the learner added them. Fixed at birth.
+
+```ts
+papers?: string[];
 ```
 
 ### ChatRecord tree

@@ -32,6 +32,11 @@ function headlineArg(tool: string, input: unknown): string {
 		const p = typeof inp.path === "string" && inp.path.length > 0 ? inp.path : "~";
 		return p;
 	}
+	// Paper tools (paper sessions): which paper and which pages.
+	if ((tool === "paper_look" || tool === "paper_show") && typeof inp.paper === "number") {
+		const pages = tool === "paper_look" ? inp.pages : inp.page;
+		return `paper ${inp.paper}${typeof pages === "string" || typeof pages === "number" ? ` · p. ${pages}` : ""}`;
+	}
 	if (typeof inp.pattern === "string") return inp.pattern;
 	// list_propositions: the session id is the call's subject — the
 	// collapsed line reads "list_propositions chat_…". Shown as given
