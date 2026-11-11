@@ -10,8 +10,10 @@ import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 import { DispatchCard } from "@/components/artifacts/dispatch-card";
 import { JobsContext } from "@/components/jobs-context";
 
-/** The Markdown dispatch uses this same exclusive built-in language. */
+/** The Markdown dispatch uses these same exclusive built-in languages. */
 export const BUILTIN_MERMAID_LANGUAGE = "mermaid";
+/** Inline SVG diagrams (architecture/workflow/pipeline figures the teacher draws). */
+export const BUILTIN_SVG_LANGUAGE = "svg";
 
 /** Only actual exclusive presentation claims: not every backend/internal tool.
  * A function avoids eager access across the existing artifact/chat module cycle. */

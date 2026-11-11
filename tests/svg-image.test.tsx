@@ -9,7 +9,8 @@ const renderToStaticMarkup = (node: React.ReactNode) => renderMarkup(<Interactio
 import { createRoot } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { VisualOutputCard } from "../components/artifacts/visual-card.tsx";
-import { svgImageSource } from "../components/artifacts/svg-image.tsx";
+import { svgImageSource, svgWithBackdrop } from "../components/artifacts/svg-image.tsx";
+import { MarkdownCode } from "../components/md-blocks.tsx";
 import { MermaidOverlay, SessionMermaidContext } from "../components/session-overlay.tsx";
 
 // Structure-only checks: linkedom does not load images or implement CSS cascade.
@@ -206,4 +207,112 @@ it("the fullscreen button opens the same SVG image and inversion; download keeps
 			}
 		}
 	}
+});
+
+describe("svgWithBackdrop", () => {
+	it("paints the colour first, inside the root, leaving the rest untouched", () => {
+		const source = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160"><text>A</text></svg>';
+		assert.equal(
+			svgWithBackdrop(source, "#141414"),
+			'<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160"><rect width="100%" height="100%" fill="#141414"/><text>A</text></svg>',
+		);
+	});
+
+	it("reads through a > inside an attribute value, and touches only the root", () => {
+		const source = '<svg data-note="a > b"><svg><text>A</text></svg></svg>';
+		assert.equal(svgWithBackdrop(source, "#000"), '<svg data-note="a > b"><rect width="100%" height="100%" fill="#000"/><svg><text>A</text></svg></svg>');
+	});
+});
+
+describe("inline SVG diagram block", () => {
+	const SOURCE = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160" viewBox="0 0 320 160"><text fill="#e6e6e0">Encoder</text></svg>';
+	const PARTIAL = SOURCE.slice(0, 80);
+
+	interface DiagramHarness {
+		host: Element;
+		dom: ReturnType<typeof parseHTML>;
+		opened: { svg: string; inverted: boolean }[];
+		show: (source: string) => Promise<void>;
+	}
+
+	async function withDiagram(first: string, run: (harness: DiagramHarness) => Promise<void>) {
+		const dom = parseHTML("<html><body></body></html>");
+		const names = ["window", "document", "Element", "HTMLElement", "IS_REACT_ACT_ENVIRONMENT", "getComputedStyle"] as const;
+		const originals = names.map((name) => Object.getOwnPropertyDescriptor(globalThis, name));
+		Object.assign(globalThis, {
+			window: dom.window,
+			document: dom.document,
+			Element: dom.window.Element,
+			HTMLElement: dom.window.HTMLElement,
+			IS_REACT_ACT_ENVIRONMENT: true,
+			getComputedStyle: () => ({ getPropertyValue: () => " #101820 " }),
+		});
+		const host = dom.document.createElement("div");
+		dom.document.body.append(host);
+		const root = createRoot(host);
+		const opened: DiagramHarness["opened"] = [];
+		const show = (source: string) => act(async () => root.render(
+			<SessionMermaidContext.Provider value={{ openMermaid: () => {}, openFigure: (svg, inverted) => void opened.push({ svg, inverted }) }}>
+				<MarkdownCode className="language-svg" {...{ "data-block": "true" }}>{source}</MarkdownCode>
+			</SessionMermaidContext.Provider>,
+		));
+		try {
+			await show(first);
+			await run({ host, dom, opened, show });
+		} finally {
+			try {
+				await act(async () => root.unmount());
+			} finally {
+				host.remove();
+				for (const [i, name] of names.entries()) {
+					if (originals[i]) Object.defineProperty(globalThis, name, originals[i]!);
+					else Reflect.deleteProperty(globalThis, name);
+				}
+			}
+		}
+	}
+
+	it("the diagram brings its own dark panel, inline and fullscreen, whatever the page theme", async () => {
+		await withDiagram(SOURCE, async ({ host, dom, opened }) => {
+			const panelled = svgWithBackdrop(SOURCE, "#141414");
+			assertImageBoundary(host.querySelector('[data-testid="md-svg"] div')!, panelled);
+			await act(async () => { host.querySelector('[data-testid="md-svg-expand"]')!.dispatchEvent(new dom.window.Event("click", { bubbles: true })); });
+			assert.deepEqual(opened, [{ svg: panelled, inverted: false }]);
+		});
+	});
+
+	it("a source the browser cannot display becomes the error card, with its source; Retry tries again", async () => {
+		await withDiagram(SOURCE, async ({ host, dom }) => {
+			await act(async () => { host.querySelector("img")!.dispatchEvent(new dom.window.Event("error")); });
+			assert.equal(host.querySelector("img"), null, "no broken image stays on screen");
+			assert.ok(host.querySelector('[data-streamdown="mermaid-error"]'), "the house error card shows");
+			assert.equal(host.querySelector("pre")!.textContent, SOURCE, "the source stays reachable");
+			await act(async () => { host.querySelector('[data-streamdown="mermaid-error"] button')!.dispatchEvent(new dom.window.Event("click", { bubbles: true })); });
+			assert.ok(host.querySelector("img"), "Retry shows the image again");
+		});
+	});
+
+	it("streaming: holds the skeleton with no image until the closing tag, then shows the diagram", async () => {
+		await withDiagram(PARTIAL, async ({ host, show }) => {
+			assert.ok(host.querySelector('[data-testid="md-svg"][aria-busy="true"]'), "skeleton while writing");
+			assert.equal(host.querySelector("img"), null, "a half-written document is never displayed");
+			await show(SOURCE.slice(0, 120));
+			assert.equal(host.querySelector("img"), null, "still writing");
+			await show(SOURCE);
+			assert.ok(host.querySelector("img"), "the finished document displays");
+			assert.equal(host.querySelector('[data-streamdown="mermaid-error"]'), null);
+		});
+	});
+
+	it("a document that stops before its closing tag becomes the error card; more text recovers it", async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		await withDiagram(PARTIAL, async ({ host, show }) => {
+			await act(async () => t.mock.timers.tick(3999));
+			assert.ok(host.querySelector('[aria-busy="true"]'), "a short pause keeps the skeleton");
+			await act(async () => t.mock.timers.tick(1));
+			assert.ok(host.querySelector('[data-streamdown="mermaid-error"]'), "a stalled document stops spinning");
+			await show(SOURCE);
+			assert.ok(host.querySelector("img"), "a failure belongs to one source, so the finished diagram still displays");
+		});
+	});
 });

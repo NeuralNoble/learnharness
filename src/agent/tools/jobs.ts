@@ -120,7 +120,7 @@ const DEMO_DESCRIPTION =
 const VISUAL_DESCRIPTION =
 	"Dispatch a background sub-agent that hand-authors ONE precise SVG figure, renders it, LOOKS at the render, and iterates " +
 	"until correct. Use it for exact spatial pictures auto-layout diagrams can't do: coordinate geometry, number lines, vectors, " +
-	"function plots, physical layouts. For flows/relations/taxonomies write mermaid inline instead. " +
+	"function plots, physical layouts. For architectures, workflows and pipelines draw inline SVG instead; for relations and taxonomies write mermaid inline. " +
 	"Pass `image` (a learner image file) to have the maker annotate that picture — arrows, outlines, labels — instead. Local image paths follow File access settings; use ls to discover allowed folders. " +
 	"The call is ASYNC and fire-and-forget — it resolves immediately and your turn continues; the verified figure arrives later " +
 	"as a new message.";

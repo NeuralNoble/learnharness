@@ -76,6 +76,43 @@ describe("md-blocks — mermaid", () => {
 	});
 });
 
+describe("md-blocks — svg", () => {
+	const SOURCE = '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="120" viewBox="0 0 420 120"><text>Encoder</text></svg>';
+	const fence = "```svg\n" + SOURCE + "\n```";
+
+	it("renders behind the image boundary at its natural width, never as code or live markup", () => {
+		const html = render(fence);
+		assert.ok(html.includes('data-testid="md-svg"'), "the svg block mounts");
+		assert.ok(!html.includes('data-streamdown="code-block"'), "svg fences must not render as code blocks");
+		assert.match(html, /<img[^>]+src="data:image\/svg\+xml/, "the diagram is an image document");
+		assert.match(html, /<img[^>]+width="420"/, "natural width, so a small diagram is not stretched");
+		assert.ok(!html.includes("<text>"), "generated markup never joins the app's DOM");
+	});
+
+	it("has mermaid's copy corner, and expands only inside a session", () => {
+		const html = render(fence);
+		assert.match(html, /aria-label="Copy diagram source"/);
+		assert.ok(!html.includes('data-testid="md-svg-expand"'), "expand hidden without a session context");
+		const session = renderToStaticMarkup(
+			<SessionMermaidContext.Provider value={{ openMermaid: () => {}, openFigure: () => {} }}>
+				<MessageResponse mode="static">{fence}</MessageResponse>
+			</SessionMermaidContext.Provider>,
+		);
+		assert.ok(session.includes('data-testid="md-svg-expand"'), "expand shown inside a session");
+	});
+
+	it("shows a skeleton while the fence is still streaming, never a broken image", () => {
+		const html = renderToStaticMarkup(<MessageResponse>{"```svg\n<svg width=\"420\"><rect"}</MessageResponse>);
+		assert.match(html, /data-testid="md-svg"[^>]*aria-busy="true"/, "the skeleton holds the block");
+		assert.ok(!html.includes("<img"), "a half-written document is never displayed");
+	});
+
+	it("leaves other fences on their existing paths", () => {
+		assert.ok(render("```xml\n<a/>\n```").includes('data-testid="md-code"'), "xml stays a code block");
+		assert.ok(render("```mermaid\ngraph TD\nA --> B\n```").includes('data-testid="md-mermaid"'), "mermaid stays mermaid");
+	});
+});
+
 describe("md-blocks — tables", () => {
 	it("renders as a plain prose table with the copy corner — no wrapper box, no button rows", () => {
 		const html = render("| A | B |\n| --- | --- |\n| 1 | 2 |");

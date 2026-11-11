@@ -214,6 +214,17 @@ describe("the source-derived segment list", () => {
 		assert.equal(allSegmentPaths().some((p) => p.includes("README")), false);
 	});
 
+	it("only the teacher is told to draw inline SVG diagrams", () => {
+		const toldToDraw = (agent: "teacher" | "prober" | "practice") =>
+			effectivePromptSegments(agent, {}).some((s) => s.sourceText.includes("```svg"));
+		assert.equal(toldToDraw("teacher"), true);
+		assert.equal(toldToDraw("prober"), false);
+		assert.equal(toldToDraw("practice"), false);
+		// It follows the demos fragment, whose "see below" points at it.
+		const paths = effectivePromptSegments("teacher", {}).map((s) => s.path);
+		assert.equal(paths.indexOf("teacher/52-diagrams.md"), paths.indexOf("teacher/50-demos.md") + 1);
+	});
+
 	it("effective segments: switch+file → override; either missing → source text", () => {
 		promptOverrides.writeOverride("teacher/20-teaching.md", "MY WAY");
 		const switches = { "teacher/20-teaching.md": true, "system-prompt.md": false };

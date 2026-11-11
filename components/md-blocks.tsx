@@ -13,6 +13,8 @@
  *   tables scroll inside the column.
  * - Mermaid: the bare chart, part of the message — no label, no container,
  *   no zoom pill (zoom/pan lives in the session-scoped focus overlay now).
+ * - SVG: a diagram the agent drew in its prose — the same bare block as
+ *   mermaid, kept behind the image boundary (SvgImage).
  * - Code: streamdown's CodeBlock skeleton keeps the shiki plumbing, but the
  *   container melts (subtle bg tint, no border, no header — globals.css) and
  *   the buttons go.
@@ -20,14 +22,14 @@
  *
  * THE ONE AFFORDANCE (user-decided): a small muted COPY icon at each block's
  * top-right corner, revealed on hover — copying the SOURCE (table →
- * Markdown, code → text, mermaid → chart source, math → the raw TeX). It
- * never fakes a table column or shifts layout, and hover-reveal keeps the
- * reading surface clean — the whole point of the melt. Text selection stays
- * free: the icon lives in dead corner space. Mermaid additionally gets an
- * EXPAND icon (opens the session overlay) when a chat page is mounted.
+ * Markdown, code → text, mermaid → chart source, svg → the SVG source, math →
+ * the raw TeX). It never fakes a table column or shifts layout, and hover-reveal
+ * keeps the reading surface clean — the whole point of the melt. Text selection
+ * stays free: the icon lives in dead corner space. Mermaid and SVG additionally
+ * get an EXPAND icon (opens the session overlay) when a chat page is mounted.
  */
 
-import { cloneElement, createContext, isValidElement, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { CheckIcon, CopyIcon, MaximizeIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -37,13 +39,14 @@ import {
 	useIsCodeFenceIncomplete,
 } from "streamdown";
 import type { ExtraProps } from "streamdown";
+import { SvgImage, svgWithBackdrop } from "@/components/artifacts/svg-image";
 import { MERMAID_FONT_SIZE, renderMermaid } from "@/components/mermaid-render";
 import { useAppearance } from "@/components/settings/appearance";
 import { MermaidError } from "@/components/mermaid-error";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { chartSize, useSessionMermaid } from "@/components/session-overlay";
 import { Hint } from "@/components/ui/hint";
-import { BUILTIN_MERMAID_LANGUAGE, PluginCodeBlock } from "@/components/plugin-renderers";
+import { BUILTIN_MERMAID_LANGUAGE, BUILTIN_SVG_LANGUAGE, PluginCodeBlock } from "@/components/plugin-renderers";
 
 /** Local rendering profile for host-mounted, display-only Markdown. Ordinary
  * transcript rendering (including SSR/static Streamdown) stays interactive. */
@@ -234,9 +237,74 @@ function MermaidInline({ chart }: { chart: string }) {
 	);
 }
 
+/** How long a document may go without growing or closing before it counts as
+ *  broken: a reply cut off mid-diagram never reaches its closing tag. */
+const SVG_STALL_MS = 4000;
+
+/** A diagram the agent drew as SVG in its own prose, with mermaid's hover
+ *  corner and error card. The source itself shows whether it is finished: the
+ *  transcript renders without Streamdown's isAnimating, so
+ *  useIsCodeFenceIncomplete stays false there. A failure belongs to one exact
+ *  source, so a streaming document can never stay stuck on an earlier failure.
+ *  Inline it is transparent, on the lesson page; only the fullscreen copy gets
+ *  the page colour behind it. */
+/** The teacher draws diagrams in a palette made for a dark panel (light text,
+ *  mid-grey arrows), so the diagram brings its own panel in every theme: the
+ *  same colour as the dark page, and a dark card on a light one. */
+const SVG_DIAGRAM_PANEL = "#141414";
+
+function SvgInline({ source }: { source: string }) {
+	const [failedSource, setFailedSource] = useState<string | null>(null);
+	const panelled = useMemo(() => svgWithBackdrop(source, SVG_DIAGRAM_PANEL), [source]);
+	const overlay = useSessionMermaid();
+	const closed = /<\/svg>\s*$/i.test(source);
+	const failed = failedSource === source;
+	useEffect(() => {
+		if (closed || failed) return;
+		const timer = setTimeout(() => setFailedSource(source), SVG_STALL_MS);
+		return () => clearTimeout(timer);
+	}, [closed, failed, source]);
+	if (failed) {
+		return <MermaidError chart={source} error="The SVG could not be displayed." retry={() => setFailedSource(null)} />;
+	}
+	if (!closed) {
+		return (
+			<div data-testid="md-svg" className="my-4 flex justify-center p-4" aria-busy="true">
+				<span className="inline-block size-4 animate-spin rounded-full border border-current border-b-2 text-muted-foreground" />
+			</div>
+		);
+	}
+	return (
+		<div data-testid="md-svg" className="group/md relative my-4">
+			<div className="mx-auto w-fit max-w-full">
+				<SvgImage svg={panelled} width={chartSize(source).w} className="block h-auto max-w-full rounded-lg" onError={() => setFailedSource(source)} />
+			</div>
+			<div className="absolute top-0 right-0 flex items-start gap-0.5">
+				<CopyCorner getText={() => source} label="Copy diagram source" />
+				{overlay && (
+					<Hint label="Open full-screen" side="bottom">
+						<button
+							type="button"
+							aria-label="Expand diagram"
+							data-testid="md-svg-expand"
+							className="flex size-6 items-center justify-center rounded-md text-muted-foreground/70 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/md:opacity-100"
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								overlay.openFigure(panelled, false);
+							}}
+						>
+							<MaximizeIcon className="size-3.5" />
+						</button>
+					</Hint>
+				)}
+			</div>
+		</div>
+	);
+}
+
 /** The Streamdown `code` override: inline code passes through with the
- *  house inline classes; block fences split — mermaid renders as the bare
- *  chart above, everything else delegates to streamdown's exported
+ *  house inline classes; block fences split — mermaid and svg render as the
+ *  bare diagrams above, everything else delegates to streamdown's exported
  *  CodeBlock (shiki highlighting + line numbers preserved) inside a
  *  hover-copy wrapper, with NO children so its sticky button row never
  *  mounts. The container/look is CSS-melted in globals.css
@@ -260,6 +328,7 @@ export function MarkdownCode(props: ComponentProps<"code"> & ExtraProps) {
 	const source = codeSource(children);
 
 	if (language === BUILTIN_MERMAID_LANGUAGE) return <MermaidInline chart={source} />;
+	if (language === BUILTIN_SVG_LANGUAGE) return <SvgInline source={source} />;
 
 	const startMatch = /startLine=(\d+)/.exec(meta);
 	const startLine = startMatch ? Number.parseInt(startMatch[1]!, 10) : undefined;
